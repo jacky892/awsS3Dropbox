@@ -98,7 +98,8 @@ def run_sync_daemon(sync_dir, counter=0):
             if not os.path.exists(fullfname):
                 # Move the object to the deleted folder
                 #remove file already deleted in local
-                print('xx')
+                if obj['LastModified'].timestamp() > last_check_time:
+                    s3.download_file(bucketname, key, key)
                 s3.copy_object(Bucket=bucketname, CopySource={'Bucket': bucketname, 'Key': obj['Key']}, Key=f'{sync_dir}_deleted/' + obj['Key'][10:])
                 s3.delete_object(Bucket=bucketname, Key=obj['Key'])
     
