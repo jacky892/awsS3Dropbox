@@ -73,9 +73,6 @@ def run_sync_daemon(sync_dir, counter=0):
 
 
 
-    # Update the last update time in .update_info
-    with open('.update_info', 'w') as f:
-        f.write(str(current_time))
 
 
     # Now we need to check for any files that are in the S3 bucket but not in the local S3dropbox folder
@@ -107,29 +104,39 @@ def run_sync_daemon(sync_dir, counter=0):
     
     if cnt%1000==0:
         # do some house keep every 1000 cycles:
-        list_all_files_and_get_total_size(s3, bucketname, delete=False)
+        s3db_house_keeping(s3, bucketname, delete=False, pull=True)
+
+    # Update the last update time in .update_info
+    with open('.update_info', 'w') as f:
+        f.write(str(current_time))
                 
 def s3db_house_keeping(s3, bucketname='jls3b1', delete=False, pull=False):
     all_flist=[]
     objects2 = s3.list_objects_v2(Bucket=bucketname)
     tsize=0
+    tsfile='.update_info'    
     if not 'Contents' in objects2.keys():
         print('s3 is empty')
         return 0
     for obj in objects2['Contents']:
         key = obj['Key']
         size = obj['Size']
+        
         if pull:
             dirname=os.path.dirname(key)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
-            s3.download_file(bucketname, key, key)
+            with open(tsfile, 'r') as f:
+                last_check_time = int(float(f.read()))
+                
+            if obj['LastModified'].timestamp() > last_check_time:
+                s3.download_file(bucketname, key, key)
             
         dirname=os.path.dirname(key)
         print(f'{key}: {size} bytes {dirname}')
         tsize=size+tsize
+        td=(datetime.datetime.now(tz=tzutc())-obj['LastModified'])                
         if '_deleted'==dirname[-8:]:
-            td=(datetime.datetime.now(tz=tzutc())-obj['LastModified'])
             if td.seconds>3600*24*10:
                 print('binned for more than 10 days, now removing %s' % obj['Key'])
                 s3.delete_object(Bucket=bucketname, Key=key)                
