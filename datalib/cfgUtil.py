@@ -16,7 +16,7 @@ def get_aws_keys_input():
         print('not a valid aws secret key, try again')
         aws_secret_key=input('please input aws secret key (40 characters):')
 
-    bucket_name=input('please input s3 bucket name')
+    bucket_name=input('please input s3 bucket name:')
     
     config = configparser.ConfigParser()
     # Add the structure to the file we will create

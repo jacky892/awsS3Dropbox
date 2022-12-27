@@ -1,8 +1,12 @@
+# %load s3dropboxd.py
+
 import os
+import sys
 import time
 import boto3
 import configparser
 import datetime
+from dateutil.tz import tzutc
 
 # Parse the sync.ini to get the aws credential
 import pandas as pd
@@ -15,13 +19,17 @@ def setup_ignore_list():
     return ignore_list
 
 
-def run_sync_daemon(sync_dir, counter=0):
-    # Connect to the S3 service
+def get_settings():
     from datalib.cfgUtil import cfgUtil
     aws_key_dict=cfgUtil.get_aws_keys_from_ini()
     AWS_ACCESS_KEY = aws_key_dict['access_key']
     AWS_SECRET_KEY = aws_key_dict['secret_key']
     bucketname=aws_key_dict['bucket_name']
+    return AWS_ACCESS_KEY, AWS_SECRET_KEY, bucketname
+    
+def run_sync_daemon(sync_dir, counter=0):
+    # Connect to the S3 service
+    AWS_ACCESS_KEY, AWS_SECRET_KEY, bucketname=get_settings()
     ignore_list=setup_ignore_list()
     print('bucketname is ',bucketname)
     s3 = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY, aws_secret_access_key=AWS_SECRET_KEY)
@@ -75,7 +83,6 @@ def run_sync_daemon(sync_dir, counter=0):
     #objects = s3.list_objects_v2(Bucket=bucketname)
 
     # get current time with tz
-    from dateutil.tz import tzutc
     import datetime
     now=datetime.datetime.now(tz=tzutc())
 
@@ -102,7 +109,7 @@ def run_sync_daemon(sync_dir, counter=0):
         # do some house keep every 1000 cycles:
         list_all_files_and_get_total_size(s3, bucketname, delete=False)
                 
-def list_all_files_and_get_total_size(s3, bucketname='jls3b1', delete=False):
+def s3db_house_keeping(s3, bucketname='jls3b1', delete=False, pull=False):
     all_flist=[]
     objects2 = s3.list_objects_v2(Bucket=bucketname)
     tsize=0
@@ -112,6 +119,12 @@ def list_all_files_and_get_total_size(s3, bucketname='jls3b1', delete=False):
     for obj in objects2['Contents']:
         key = obj['Key']
         size = obj['Size']
+        if pull:
+            dirname=os.path.dirname(key)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+            s3.download_file(bucketname, key, key)
+            
         dirname=os.path.dirname(key)
         print(f'{key}: {size} bytes {dirname}')
         tsize=size+tsize
@@ -136,9 +149,17 @@ def list_all_files_and_get_total_size(s3, bucketname='jls3b1', delete=False):
     return ret_dict
 
 
-if __name__=='__main__':                
-    cnt=0
+if __name__=='__main__':    
     sync_dir='S3dropbox'
+    if len(sys.argv)>1:
+        cmd=sys.argv[1]
+        if cmd=='pull':
+            AWS_ACCESS_KEY, AWS_SECRET_KEY, bucketname=get_settings()
+            s3 = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY, aws_secret_access_key=AWS_SECRET_KEY)
+            s3db_house_keeping(s3, bucketname, delete=False, pull=True)
+            exit()
+
+    cnt=0
     while(True):
         run_sync_daemon(sync_dir, counter=cnt)
         time.sleep(60)
